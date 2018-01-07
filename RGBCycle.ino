@@ -1,3 +1,9 @@
+#include "FastLED.h" // For CRGB/CHSV functions
+
+const int redPin = 0;
+const int greenPin = 1;
+const int bluePin = 4;
+
 const uint8_t PROGMEM gamma8[] = {
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
     0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
@@ -15,44 +21,102 @@ const uint8_t PROGMEM gamma8[] = {
   144,146,148,150,152,154,156,158,160,162,164,167,169,171,173,175,
   177,180,182,184,186,189,191,193,196,198,200,203,205,208,210,213,
   215,218,220,223,225,228,231,233,236,239,241,244,247,249,252,255 };
-  
-const int redPin = 0;
-const int greenPin = 1;
-const int bluePin = 4;
 
-void setup() {
-  // Start off with the LED off.
-  setColourRgb(0,0,0);
+#if 1 // use gamma correction
+void WriteLed(const CRGB& Led) {
+  analogWrite(redPin,   255 - pgm_read_byte(&gamma8[Led.r]));
+  analogWrite(greenPin, 255 - pgm_read_byte(&gamma8[Led.g]));
+  analogWrite(bluePin,  255 - pgm_read_byte(&gamma8[Led.b]));
 }
 
+#elif 0 // direct port access... needs fixing
+void WriteLed(const CRGB& Led) {
+  volatile uint8_t* Port[] = {&OCR0A, &OCR0B, &OCR1B};
+  *Port[0] = 255 - pgm_read_byte(&gamma8[Led.r]);
+  *Port[1] = 255 - pgm_read_byte(&gamma8[Led.g]);
+  *Port[2] = 255 - pgm_read_byte(&gamma8[Led.b]);
+}
+
+#else
+void WriteLed(const CRGB& Led) {
+  analogWrite(redPin,   255 - Led.r);
+  analogWrite(greenPin, 255 - Led.g);
+  analogWrite(bluePin,  255 - Led.b);
+}
+#endif
+
+void setup() {
+#if 1
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
+#else
+  // Configure counter/timer0 for fast PWM on PB0 and PB1
+  TCCR0A = 3<<COM0A0 | 3<<COM0B0 | 3<<WGM00;
+  TCCR0B = 0<<WGM02 | 3<<CS00; // Optional; already set
+  // Configure counter/timer1 for fast PWM on PB4
+  GTCCR = 1<<PWM1B | 3<<COM1B0;
+  TCCR1 = 3<<COM1A0 | 7<<CS10;
+#endif
+  WriteLed(CRGB::Black);
+}
+
+uint8_t Hues[] = {HUE_RED, HUE_GREEN, HUE_BLUE};
+
 void loop() {
-  unsigned int rgbColour[3];
+  CRGB Led;
+  uint8_t Idx;
+  uint8_t Idx2;
 
-  // Start off with red.
-  rgbColour[0] = 255;
-  rgbColour[1] = 0;
-  rgbColour[2] = 0;  
-
-  // Choose the colours to increment and decrement.
-  for (int decColour = 0; decColour < 3; decColour += 1) {
-    int incColour = decColour == 2 ? 0 : decColour + 1;
-
-    // cross-fade the two colours.
-    for(int i = 0; i < 255; i += 1) {
-      rgbColour[decColour] -= 1;
-      rgbColour[incColour] += 1;
-      
-      setColourRgb(255 - pgm_read_byte(&gamma8[rgbColour[0]]),
-                   255 - pgm_read_byte(&gamma8[rgbColour[1]]),
-                   255 - pgm_read_byte(&gamma8[rgbColour[2]]));
-      delay(5);
+  Idx = 0;
+  while (1) {
+#if 0
+    int d = 500;
+    WriteLed(CRGB::Red);
+    delay(d);
+    WriteLed(CRGB::Black);
+    delay(d);
+    WriteLed(CRGB::Green);
+    delay(d);
+    WriteLed(CRGB::Black);
+    delay(d);
+    WriteLed(CRGB::Blue);
+    delay(d);
+    WriteLed(CRGB::Black);
+    delay(d);
+#elif 0
+    analogWrite(redPin,   255 - (Idx & 3)); // Test 4 lowest values
+    delay(500);
+    Idx++; // 8-bit wraparound
+#elif 1
+    Led = CHSV(Idx, 255, 255); // max out saturation, brightness
+    WriteLed(Led);
+    Idx++; // 8-bit wraparound
+    delay(12);
+#elif 0
+    Led = CHSV(HUE_GREEN, Idx, 255); // vary saturation
+    WriteLed(Led);
+    Idx++; // 8-bit wraparound
+    delay(8);
+#elif 0
+    for (Idx2 = 0; Idx2 < 255; Idx2++) {
+      Led = CHSV(Hues[Idx], 255, Idx2); // vary value (brightness)
+      WriteLed(Led);
+      delay(8);
     }
+    Idx = (Idx + 1) % (sizeof(Hues) / sizeof(Hues[0]));
+#elif 0
+    Led = ColorFromPalette(HeatColors_p, 240 - Idx, 255, LINEARBLEND);
+    WriteLed(Led);
+    Idx = (Idx + 1) % 241; // See note in colorpallets.cpp.  Use only 0-240
+    delay(8);
+#else
+    Led = HeatColor(Idx);
+    WriteLed(Led);
+    Idx--; // 8-bit wraparound
+    delay(5);
+#endif
   }
 }
 
-void setColourRgb(unsigned int red, unsigned int green, unsigned int blue) {
-  analogWrite(redPin, red);
-  analogWrite(greenPin, green);
-  analogWrite(bluePin, blue);
- }
-
+// See the blend() function in colorutils.h to interpolate between 2 colors
