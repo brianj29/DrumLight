@@ -27,12 +27,17 @@
  */
 
 #include "FastLED.h" // For CRGB/CHSV functions
+#include <avr/sleep.h>
+#include <avr/power.h>
+
 
 const int redPin    = 0;
 const int greenPin  = 1;
 const int bluePin   = 4;
 const int knockPin  = 3;
 const int buttonPin = 2;
+const int knockPinInt = PCINT3; // interrupt bit numbers
+const int buttonPinInt = PCINT2;
 #ifdef CALIBRATE
 const int knockPinAnalog = A3;
 #endif
@@ -113,6 +118,12 @@ void calibrate() {
 }
 #endif
 
+// interrupt service routine, called when waking from sleep
+ISR (PCINT0_vect)
+{
+  sleep_disable ();         // first thing after waking from sleep:
+}
+
 void setup() {
   pinMode(redPin, OUTPUT);
   pinMode(greenPin, OUTPUT);
@@ -130,6 +141,16 @@ void setup() {
   else {
     active = HIGH;
   }
+
+  // Enable the pin change interrupts
+  PCMSK |= bit (knockPinInt) | bit (buttonPinInt);
+  GIFR  |= bit (PCIF);   // clear any outstanding interrupts
+  GIMSK |= bit (PCIE);   // enable pin change interrupts
+
+#ifndef CALIBRATE
+  // Turn off the ADC -- we don't use it
+  ADCSRA = 0;
+#endif
 
   // Initialize the effect index.  TODO:  store this in nvram.
   effect = 0;
@@ -220,6 +241,25 @@ void loop() {
   // Turn off the light
   WriteLed(CRGB::Black);
 
+#if 1
+  // Sleep until something happens
+  set_sleep_mode (SLEEP_MODE_PWR_DOWN);   
+  power_all_disable ();    // power off ADC, Timer 0 and 1, serial interface
+  noInterrupts ();         // make sure we don't get interrupted before we sleep
+  sleep_enable ();         // enables the sleep bit in the mcucr register
+  interrupts ();           // interrupts allowed now, next instruction WILL be executed
+  sleep_cpu ();            // here the device is put to sleep
+  power_all_enable();      // power everything back on
+
+  // We're back after sleeping
+  if (digitalRead(buttonPin) == 0) {
+    // Advance to the next effect
+    effect += 1;
+    if (effect > MAX_EFFECT) {
+      effect = 0;
+    }
+  }
+#else
   // Wait for something to happen
   while (1) {
     if (digitalRead(knockPin) == active) {
@@ -234,6 +274,7 @@ void loop() {
       break;
     }
   }
+#endif
 }
 
 // See the blend() function in colorutils.h to interpolate between 2 colors
