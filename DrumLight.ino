@@ -43,7 +43,6 @@ const int knockPinAnalog = A3;
 #endif
 
 uint8_t effect;
-int active;
 
 #if 1 // use gamma correction
 const uint8_t PROGMEM gamma8[] = {
@@ -132,15 +131,6 @@ void setup() {
   pinMode(buttonPin, INPUT_PULLUP);
 
   WriteLed(CRGB::Black);
-
-  // Determine if knockPin is active low or high.
-  // Assume it's inactive to start.
-  if (digitalRead(knockPin) == HIGH) {
-    active = LOW;
-  }
-  else {
-    active = HIGH;
-  }
 
   // Enable the pin change interrupts
   PCMSK |= bit (knockPinInt) | bit (buttonPinInt);
@@ -241,7 +231,6 @@ void loop() {
   // Turn off the light
   WriteLed(CRGB::Black);
 
-#if 1
   // Sleep until something happens
   set_sleep_mode (SLEEP_MODE_PWR_DOWN);   
   power_all_disable ();    // power off ADC, Timer 0 and 1, serial interface
@@ -259,22 +248,6 @@ void loop() {
       effect = 0;
     }
   }
-#else
-  // Wait for something to happen
-  while (1) {
-    if (digitalRead(knockPin) == active) {
-      break;
-    }
-    if (digitalRead(buttonPin) == 0) {
-      // Advance to the next effect
-      effect += 1;
-      if (effect > MAX_EFFECT) {
-        effect = 0;
-      }
-      break;
-    }
-  }
-#endif
 }
 
 // See the blend() function in colorutils.h to interpolate between 2 colors
