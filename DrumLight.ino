@@ -27,9 +27,11 @@
  */
 
 #include "FastLED.h" // For CRGB/CHSV functions
+#include <EEPROM.h>
 #include <avr/sleep.h>
 #include <avr/power.h>
 
+// Pin definitions
 
 const int redPin    = 0;
 const int greenPin  = 1;
@@ -42,6 +44,10 @@ const int buttonPinInt = PCINT2;
 const int knockPinAnalog = A3;
 #endif
 
+// EEPROM layout
+const int effectOffset = 0;
+
+// The current effect in use -- backed up to EEPROM
 uint8_t effect;
 
 #if 1 // use gamma correction
@@ -142,8 +148,12 @@ void setup() {
   ADCSRA = 0;
 #endif
 
-  // Initialize the effect index.  TODO:  store this in nvram.
-  effect = 0;
+  // Initialize the effect index
+#define MAX_EFFECT 5 // see below
+  effect = EEPROM.read(effectOffset);
+  if (effect > MAX_EFFECT) {
+    effect = 0;
+  }
 }
 
 uint8_t Hues[] = {HUE_RED, HUE_GREEN, HUE_BLUE};
@@ -223,7 +233,6 @@ void loop() {
       delay(d);
     }
     break;
-#define MAX_EFFECT 5
   default:
     break;
   }
@@ -247,6 +256,8 @@ void loop() {
     if (effect > MAX_EFFECT) {
       effect = 0;
     }
+    // Save it to non-volatile storage
+    EEPROM.write(effectOffset, effect);
   }
 }
 
